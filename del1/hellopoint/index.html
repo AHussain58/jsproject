@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+    <meta charset="utf-8">
+    <title>WebGL Hello Point</title>
+    <link rel="stylesheet" href="../../base/webgl.css" type="text/css">
+</head>
+
+<body>
+    <div style="top:0px; left:15px; width:100%; text-align:left; color:black;" class="ui">
+        <h2>WebGL Hello Point</h2>
+    </div>
+    <!-- SHADERS -->
+    <script id="base-vertex-shader" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        void main(void) {
+            gl_Position = vec4(aVertexPosition, 1.0);
+            gl_PointSize = 50.0;
+        }
+    </script>
+    <script id="base-fragment-shader" type="x-shader/x-fragment">
+        precision mediump float;
+        void main(void) {
+            gl_FragColor = vec4(1.0, 0.4, 1.0, 1.0);
+        }
+    </script>
+
+    <script type="module" >
+	    'use strict';//Bruker strict-mode, betyr bl.a. at variabler må deklareres før bruk, se https://www.w3schools.com/js/js_strict.asp
+	    import {main} from "./helloPoint.js";
+	    main();
+    </script>
+</body>
+</html>

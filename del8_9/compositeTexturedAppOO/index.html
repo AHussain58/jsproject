@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+    <meta charset="utf-8">
+    <title>WebGL Sammensatt og teksturert figur</title>
+    <link rel="stylesheet" href="../../base/webgl.css" type="text/css">
+    <script src="../../base/lib/cuon-matrix.js"></script>
+    <script src="../../base/lib/gl-matrix.js"></script>
+
+</head>
+
+<body>
+<div style="top:0px; left:15px; width:100%; text-align:left; color:black;" class="ui">
+    <h2>WebGL  Sammensatt og teksturert figur</h2>
+    FPS: <span id="fps">--</span><br>
+    WASD Kamerastyring.<br>
+    YU Flytt huset.<br>
+    VB Zoom<br>
+</div>
+<!-- SHADER som håndterer posisjon, farge og tekstur. -->
+<script id="texture-vertex-shader" type="x-shader/x-vertex">
+    attribute vec4 aVertexPosition;
+    attribute vec4 aVertexColor;
+    attribute vec2 aVertexTextureCoordinate;
+    uniform mat4 uModelViewMatrix;
+    uniform mat4 uProjectionMatrix;
+
+    varying lowp vec2 vTextureCoordinate;
+    varying lowp vec4 vColor;
+    void main() {
+        gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
+        vTextureCoordinate = aVertexTextureCoordinate;
+        vColor = aVertexColor;
+        gl_PointSize = 10.0;    //Merk: Kun i bruk når man tegner POINTS
+    }
+</script>
+<script id="texture-fragment-shader" type="x-shader/x-fragment">
+    varying lowp vec4 vColor;
+    varying lowp vec2 vTextureCoordinate;
+    uniform sampler2D uSampler;
+    void main() {
+        gl_FragColor = texture2D(uSampler, vec2(vTextureCoordinate.s, vTextureCoordinate.t));
+    }
+</script>
+<script type="module" >
+	'use strict';
+	import {MyCompositeTexturedApp} from "./MyCompositeTexturedApp.js";
+	let app = new MyCompositeTexturedApp();
+	app.animate();
+</script>
+</body>
+
+</html>

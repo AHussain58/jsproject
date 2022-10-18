@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="nb">
+<head>
+    <meta charset="utf-8">
+    <title>WebGL Kule med skinnende overflate (specular lysberegning).</title>
+    <link rel="stylesheet" href="../../base/webgl.css" type="text/css">
+    <script src="../../base/lib/cuon-matrix.js"></script>
+    <script src="../../base/lib/gl-matrix.js"></script>
+</head>
+
+<body>
+    <div style="top:0px; left:15px; width:100%; text-align:left; color:black;" class="ui">
+        <h2>WebGL Kule med skinnende overflate (specular lysberegning).</h2>
+        FPS: <span id="fps">--</span><br>
+        WASD Kamerastyring.<br>
+        VB Zoom<br>
+        <b>Lysposisjon: <span id="light-position">--</span></b><br><br>
+        <b>Ambient lys: <span id="ambient-light-color">--</span></b><br>
+        <b>Diffus lysfarge: <span id="diffuse-light-color">--</span></b><br>
+        <b>Specular lysfarge: <span id="specular-light-color">--</span></b><br><br>
+        <b>Kameraposisjon: <span id="camera">--</span></b><br>
+        <b>Gourad eller phong shading:</b><br>
+        <label class="switch">
+            <input type="checkbox" id="phongCheckBox" checked>
+            <span class="slider round"></span>
+        </label>
+        <span id="gourad-phong">--</span></b><br>
+        <label for="shininess">Shininess</label>
+        <input type="number" id="shininess" name="shininess" min="0" max="100.0" value="76.8" step="0.5">
+        <label for="intensity">Intensity</label>
+        <input type="number" id="intensity" name="intensity" min="0.2" max="100.0" value="1" step="0.2">
+    </div>
+
+    <!-- BASE SHADER, kun farge og posisjon. -->
+    <script id="base-vertex-shader" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec4 aVertexColor;
+        uniform mat4 uModelViewMatrix;
+        uniform mat4 uProjectionMatrix;
+        varying lowp vec4 vColor;
+        void main(void) {
+            gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition, 1.0);
+            vColor = aVertexColor;
+            gl_PointSize = 10.0;    //Merk: Kun i bruk når man tegner POINTS
+        }
+    </script>
+    <script id="base-fragment-shader" type="x-shader/x-fragment">
+        varying lowp vec4 vColor;
+        void main(void) {
+            gl_FragColor = vColor;
+        }
+    </script>
+
+    <!-- GOURAD SHADER som håndterer specular lys. -->
+    <script id="specular-gourad-vertex-shader" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec3 aVertexNormal; //Normalvektor.
+
+        uniform mat4 uModelMatrix; //model/world-matrisa brukes til lyskalk.
+        uniform mat3 uNormalMatrix; //Transformerer normalvektoren vha. denne.
+        uniform mat4 uModelViewMatrix;
+        uniform mat4 uProjectionMatrix;
+
+        uniform vec3 uCameraPosition; //==> Kameraets posisjon.
+        uniform vec3 uLightPosition; //Lysets posisjon.
+
+        //MERK: FARGENE ER HER GITT SOM vec4
+        uniform vec4 uAmbientLightColor;
+        uniform vec4 uDiffuseLightColor;
+        uniform vec4 uSpecularLightColor;
+
+        uniform float uShininess;	//Bestemmer hvor skinnende objektet blir. Større verdi=høyere gjennskinn og mer fokusert "flekk".
+        uniform float uIntensity;	//Bestemmer intensiteten på gjennskinn.
+
+        varying vec4 vLightWeighting;
+
+        void main() {
+            //Transformer normalvektoren til world-koordinater:
+            vec3 normalVector = normalize(uNormalMatrix * aVertexNormal);
+
+            //Transformer til world-koordinater:
+            vec4 vertexPositionInWorldCoords = uModelMatrix * vec4(aVertexPosition, 1.0);
+
+            vec3 viewDirection = normalize(uCameraPosition - vec3(vertexPositionInWorldCoords));
+            vec3 lightDirection = normalize(uLightPosition - vec3(vertexPositionInWorldCoords));
+
+            // DIFFUST LYS: Beregn prikkprodukt av lysvektor og normalvektor:
+            float diffuseLightWeightning = max(dot(normalVector, lightDirection), 0.0);
+            vec4 diffuseReflection = diffuseLightWeightning * uDiffuseLightColor;
+
+            // SPECULAR LYS:
+            vec4 specularReflection;
+            if (dot(normalVector, lightDirection) < 0.0) {
+                // Lyskilden er på feil side?
+                specularReflection = vec4(0.0, 0.0, 0.0, 0.0);// Ingen specular refleksjon.
+            } else {
+                vec3 reflectedVector = normalize(reflect(-lightDirection, normalVector));
+                float cosAngle = max(0.0, dot(reflectedVector, viewDirection));
+                specularReflection = uIntensity * uSpecularLightColor *  pow(cosAngle, uShininess);
+            }
+
+            //Summer alle refleksjonskomponenter og send til fragmentshader:
+            vLightWeighting = uAmbientLightColor + diffuseReflection + specularReflection;
+
+            //Transformer vertex:
+            gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+    <script id="specular-gourad-fragment-shader" type="x-shader/x-fragment">
+        precision mediump float;
+        varying vec4 vLightWeighting;
+        void main() {
+            gl_FragColor = vLightWeighting;
+        }
+    </script>
+
+    <!-- PHONG SHADER som håndterer specular lys. -->
+    <script id="specular-phong-vertex-shader" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec3 aVertexNormal;
+
+        uniform mat4 uModelMatrix;
+        uniform mat4 uModelViewMatrix;
+        uniform mat4 uProjectionMatrix;
+
+        varying vec3 vNormal;
+        varying vec4 vVertexPositionInWorldCoords;
+
+        void main() {
+            //NB! Bruker modellmatrisa til å transforere posisjonen.
+            vec4 vertexPostionInWorldCoords = uModelMatrix * vec4(aVertexPosition, 1.0);
+            //Sender begge videre til fragmentshaderen:
+            vVertexPositionInWorldCoords = vertexPostionInWorldCoords;
+            vNormal = aVertexNormal;
+            //Transformer vertex posisjonen (på vanlig måte):
+            gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition, 1.0);
+        }
+    </script>
+    <script id="specular-phong-fragment-shader" type="x-shader/x-fragment">
+        precision mediump float;
+        uniform vec3 uCameraPosition; 	//Kameraposisjon.
+        uniform vec3 uLightPosition;	//Lyskildens posisjon (bruker punktlys).
+
+        //MERK: FARGENE ER HER GITT SOM vec4
+        uniform vec4 uAmbientLightColor;
+        uniform vec4 uDiffuseLightColor;
+        uniform vec4 uSpecularLightColor;
+
+        uniform mat3 uNormalMatrix;   //Transformerer normalvektoren vha. denne.
+
+        uniform float uShininess;	//Bestemmer hvor skinnende objektet blir. Større verdi=høyere gjennskinn og mer fokusert "flekk".
+        uniform float uIntensity;	//Bestemmer intensiteten på gjennskinn.
+
+        varying vec3 vNormal;					//Interpolert normalvektor.
+        varying vec4 vVertexPositionInWorldCoords;	//Interpolert posisjon.
+
+
+        void main() {
+            //Transformerer og normaliser normalvektoren.
+            vec3 normalVector = normalize(uNormalMatrix * vNormal);
+
+            vec3 viewDirection = normalize(uCameraPosition -  vec3(vVertexPositionInWorldCoords));
+            vec3 lightDirection = normalize(uLightPosition - vec3(vVertexPositionInWorldCoords));
+
+            // DIFFUST LYS: Beregn prikkprodukt av lysvektor og normalvektor:
+            float diffuseLightWeightning = max(dot(normalVector, lightDirection), 0.0);
+
+            // SPECULAR LYS:
+            vec4 specularReflection;
+            if (dot(normalVector, lightDirection) < 0.0) {
+                // Lyskilden er på feil side?
+                specularReflection = vec4(0.0, 0.0, 0.0, 0.0);	// Ingen specular refleksjon
+            } else {
+                vec3 reflectedVector = normalize(reflect(-lightDirection, normalVector));
+                float cosAngle = max(0.0, dot(reflectedVector, viewDirection));
+                specularReflection = uIntensity * uSpecularLightColor *  pow(cosAngle, uShininess);
+            }
+            //Specular refleksjon fra dette fragmentet:
+            vec4 lightWeightingSpecular = uSpecularLightColor * specularReflection;
+
+            gl_FragColor = uAmbientLightColor + (uDiffuseLightColor * diffuseLightWeightning) + lightWeightingSpecular;
+        }
+    </script>
+
+    <script type="module" >
+	    //Bruker strict-mode, betyr bl.a. at variabler må deklareres før bruk, se https://www.w3schools.com/js/js_strict.asp
+	    'use strict';
+	    import {main} from "./sphereSpecularLight.js";
+	    main();
+    </script>
+</body>
+
+</html>
